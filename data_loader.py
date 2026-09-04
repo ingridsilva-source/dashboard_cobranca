@@ -156,16 +156,20 @@ def _deduplicar_colunas(nomes):
     return resultado
 
 
-def _ler_aba(planilha, nome_desejado) -> pd.DataFrame:
-    """Lê uma aba pegando os valores brutos (get_all_values), em vez de
-    get_all_records: este último quebra quando a planilha tem cabeçalhos
-    duplicados ou em branco, o que é comum em planilhas mantidas por
-    várias pessoas ao longo do tempo."""
+def _ler_aba(planilha, nome_desejado, intervalo: str = None) -> pd.DataFrame:
+    """Lê uma aba pegando os valores brutos, em vez de get_all_records:
+    este último quebra quando a planilha tem cabeçalhos duplicados ou em
+    branco, o que é comum em planilhas mantidas por várias pessoas ao
+    longo do tempo.
+
+    Se `intervalo` for passado (ex.: "J10:N22"), lê só aquele intervalo
+    da aba — usado pra tabelas dinâmicas que não começam em A1. Sem
+    `intervalo`, lê a aba inteira (get_all_values)."""
     ws = _encontrar_aba(planilha, nome_desejado)
     if ws is None:
         return pd.DataFrame()
 
-    valores = ws.get_all_values()
+    valores = ws.get(intervalo) if intervalo else ws.get_all_values()
     if not valores:
         return pd.DataFrame()
 
@@ -346,7 +350,7 @@ def carregar_dados():
 
     base = _ler_aba(planilha, config.ABA_BASE_COBRANCA)
     email = _ler_aba(planilha, config.ABA_BASE_EMAIL)
-    indicadores = _ler_aba(planilha, config.ABA_INDICADORES)
+    indicadores = _ler_aba(planilha, config.ABA_INDICADORES, intervalo=config.RANGE_INDICADORES)
     clientes = _ler_aba(planilha, config.ABA_RELACAO_CLIENTES)
     historico = _ler_aba(planilha, config.ABA_HISTORICO_VALORES)
 
