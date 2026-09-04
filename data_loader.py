@@ -303,11 +303,20 @@ def _processar(base, email, indicadores, clientes, historico):
             def _parse_pct(v):
                 if pd.isna(v) or v == "":
                     return 0.0
-                s = str(v).replace("%", "").replace(",", ".").strip()
+                texto = str(v).strip()
+                tem_percentual = "%" in texto
+                s = texto.replace("%", "").replace(",", ".").strip()
                 try:
                     val = float(s)
                 except ValueError:
                     return 0.0
+                # Se o texto já tinha o símbolo "%", o número sempre
+                # precisa ser dividido por 100 — mesmo quando é menor que
+                # 1 (ex.: "0,97%" é 0,97 vencido em 100, não 97%). Sem o
+                # símbolo, mantém a regra antiga (número > 1 = já veio
+                # como percentual "cheio", ex. 60 em vez de 0,60).
+                if tem_percentual:
+                    return val / 100
                 return val / 100 if val > 1 else val
             indicadores["Percentual"] = indicadores["Percentual"].apply(_parse_pct)
 
@@ -342,10 +351,13 @@ def _processar(base, email, indicadores, clientes, historico):
     }
 
 
+@st.cache_data(ttl=config.CACHE_TTL_SECONDS, show_spinner="Atualizando dados da planilha...")
 def carregar_dados():
     """Busca as abas da planilha no Google Sheets e devolve os DataFrames
-    já tratados. É esta função que o app.py chama (envolvida em
-    st.cache_data para não bater na API do Google a cada rerun)."""
+    já tratados. Fica com cache (st.cache_data) pra não bater na API do
+    Google a cada rerun — e como é a mesma função importada por todas as
+    páginas do app (Dashboard e Consulta de Inadimplência), o cache é
+    compartilhado entre elas."""
     planilha = _abrir_planilha()
 
     base = _ler_aba(planilha, config.ABA_BASE_COBRANCA)

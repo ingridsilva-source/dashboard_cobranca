@@ -1,6 +1,7 @@
 """
-Dashboard interativo da carteira de cobrança — com consulta de
-inadimplência e filtros globais por mês e por carteira.
+Dashboard interativo da carteira de cobrança — com filtros globais por
+mês e por carteira. A Consulta de Inadimplência fica numa página
+separada (veja pages/1_🔎_Consulta_de_Inadimplencia.py).
 
 Rodar com:
     streamlit run app.py
@@ -8,6 +9,7 @@ Rodar com:
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 try:
@@ -18,29 +20,24 @@ except ImportError:
 
 import config
 from auth import check_password
-from busca import MSG_SEM_ATRASO, buscar_cliente, montar_email_map
 from data_loader import carregar_dados
-from utils import fmt_moeda, mes_vencimento_label, parse_date, safe_col
+from ui_common import botao_recarregar_dados
+from utils import fmt_moeda, mes_vencimento_label, nome_mes_de_referencia
 
 st.set_page_config(
     page_title="Dashboard de Cobrança",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
-# Tela de senha — bloqueia todo o resto do app (dados, gráficos, consulta)
-# até a senha certa ser digitada. Veja auth.py.
+# Tela de senha — bloqueia todo o resto do app (dados, gráficos) até a
+# senha certa ser digitada. Veja auth.py.
 if not check_password():
     st.stop()
 
 if HAS_AUTOREFRESH:
     st_autorefresh(interval=config.REFRESH_INTERVAL_MS, key="auto_refresh")
-
-
-@st.cache_data(ttl=config.CACHE_TTL_SECONDS, show_spinner="Atualizando dados da planilha...")
-def get_data():
-    return carregar_dados()
 
 
 def bar_com_rotulo_moeda(df, x, y, **kwargs):
@@ -55,14 +52,10 @@ def bar_com_rotulo_moeda(df, x, y, **kwargs):
 # --------------------------------------------------------------------------
 # CARGA DE DADOS
 # --------------------------------------------------------------------------
-with st.sidebar:
-    st.subheader("Dados")
-    if st.button("🔄 Recarregar dados agora"):
-        st.cache_data.clear()
-        st.rerun()
+botao_recarregar_dados()
 
 try:
-    dados = get_data()
+    dados = carregar_dados()
 except Exception as e:
     st.error(
         "Não foi possível carregar os dados do Google Sheets. Confira se "
@@ -74,7 +67,6 @@ except Exception as e:
     st.stop()
 
 base_completa = dados["base"]
-email_df = dados["email"]
 indicadores = dados["indicadores"]
 historico = dados["historico"]
 
@@ -85,97 +77,10 @@ if base_completa.empty:
 st.title("📊 Dashboard — Carteira de Cobrança")
 st.caption(
     f"Atualiza automaticamente a cada {config.REFRESH_INTERVAL_MS // 60000} min "
-    f"· Última leitura da planilha: {dados['carregado_em'].strftime('%d/%m/%Y %H:%M:%S')}"
+    f"· Última leitura da planilha: {dados['carregado_em'].strftime('%d/%m/%Y %H:%M:%S')} "
+    "· Precisa consultar um cliente específico? Veja a página "
+    "\"Consulta de Inadimplência\" na barra lateral."
 )
-
-# --------------------------------------------------------------------------
-# CONSULTA DE INADIMPLÊNCIA (busca livre, sempre na base completa)
-# --------------------------------------------------------------------------
-with st.container(border=True):
-    st.subheader("🔎 Consulta de Inadimplência")
-    st.caption(
-        "Busque por telefone, e-mail, razão social, CNPJ ou CNPJ editado. "
-        "Essa busca não é afetada pelos filtros de mês/carteira abaixo."
-    )
-    query = st.text_input(
-        "Buscar cliente",
-        placeholder="Digite qualquer um desses dados e pressione Enter",
-        label_visibility="collapsed",
-    )
-
-    if query:
-        matched_keys = buscar_cliente(query, base_completa, email_df)
-
-        if not matched_keys:
-            st.warning(MSG_SEM_ATRASO)
-        else:
-            email_map = montar_email_map(email_df)
-
-            if len(matched_keys) > 1:
-                opcoes = {}
-                for k in matched_keys:
-                    linha = base_completa[base_completa["_cliente_key"] == k].iloc[0]
-                    nome = linha.get("Empresa", "")
-                    cnpj = linha.get("CNPJ", "")
-                    opcoes[f"{nome} — CNPJ {cnpj}"] = k
-                escolha = st.selectbox("Mais de um cliente encontrado, selecione:", list(opcoes.keys()))
-                cliente_key = opcoes[escolha]
-            else:
-                cliente_key = matched_keys[0]
-
-            linhas_cliente = base_completa[base_completa["_cliente_key"] == cliente_key].copy()
-
-            if linhas_cliente.empty:
-                st.warning(MSG_SEM_ATRASO)
-            else:
-                primeira = linhas_cliente.iloc[0]
-                st.markdown(f"### {primeira.get('Empresa', 'Cliente')}")
-
-                total_fatura = linhas_cliente["Valor fatura"].sum()
-                total_atualizado = linhas_cliente["Valor atualizado"].sum()
-                qtd_boletos = len(linhas_cliente)
-                maior_atraso = pd.to_numeric(linhas_cliente["Atraso (dias)"], errors="coerce").max()
-
-                cc1, cc2, cc3, cc4 = st.columns(4)
-                cc1.metric("Boletos em atraso", qtd_boletos)
-                cc2.metric("Total vencido (valor da fatura)", fmt_moeda(total_fatura))
-                cc3.metric("Total atualizado (com encargos)", fmt_moeda(total_atualizado))
-                cc4.metric("Maior atraso (dias)", int(maior_atraso) if pd.notna(maior_atraso) else "-")
-
-                emails_cliente = email_map.get(cliente_key, [])
-
-                st.markdown("**Dados cadastrais**")
-                dcol1, dcol2, dcol3 = st.columns(3)
-                dcol1.write(f"**CNPJ:** {primeira.get('CNPJ', '-') or '-'}")
-                dcol1.write(f"**CNPJ editado:** {primeira.get('CNPJ_edit', '-') or '-'}")
-                dcol2.write(f"**Telefone:** {primeira.get('Telefone', '-') or '-'}")
-                dcol2.write(f"**E-mail:** {', '.join(emails_cliente) if emails_cliente else '-'}")
-                dcol3.write(f"**Situação do contrato:** {primeira.get('Situação do contrato', '-') or '-'}")
-                dcol3.write(f"**Carteira:** {primeira.get('Carteira', '-') or '-'}")
-
-                # último contato = linha com a data (coluna "Dia") mais recente
-                if "Dia" in linhas_cliente.columns:
-                    datas = linhas_cliente["Dia"].apply(parse_date)
-                    if datas.notna().any():
-                        idx_ultimo = datas.idxmax()
-                        ultimo = linhas_cliente.loc[idx_ultimo]
-                        st.markdown("**Último contato**")
-                        st.write(f"{ultimo.get('Contato', '-') or '-'} em {datas.loc[idx_ultimo].strftime('%d/%m/%Y')}")
-
-                st.markdown("**Boletos vencidos**")
-                tabela = pd.DataFrame({
-                    "Vencimento": linhas_cliente["Vencimento_dt"].dt.strftime("%d/%m/%Y").fillna("-"),
-                    "Atraso (dias)": linhas_cliente["Atraso (dias)"],
-                    "Valor fatura": linhas_cliente["Valor fatura"].apply(fmt_moeda),
-                    "Valor atualizado": linhas_cliente["Valor atualizado"].apply(fmt_moeda),
-                    "Senha do boleto": safe_col(linhas_cliente, "Senha boleto"),
-                    "Contato": safe_col(linhas_cliente, "Contato"),
-                })
-                st.dataframe(tabela, use_container_width=True, hide_index=True)
-    else:
-        st.caption("Digite um dado do cliente acima para consultar a situação de inadimplência.")
-
-st.divider()
 
 # --------------------------------------------------------------------------
 # FILTROS GLOBAIS (mês e carteira) — afetam tudo abaixo, exceto Indicadores
@@ -221,8 +126,8 @@ qtd_clientes = base["CNPJ_limpo"].nunique()
 
 k1, k2, k3 = st.columns(3)
 k1.metric("Valor total vencido", fmt_moeda(total_vencido))
-k2.metric("Boletos vencidos (linhas)", f"{qtd_boletos:,}".replace(",", "."))
-k3.metric("Clientes com boletos vencidos", f"{qtd_clientes:,}".replace(",", "."))
+k2.metric("Boletos vencidos (Quantidade)", f"{qtd_boletos:,}".replace(",", "."))
+k3.metric("Clientes com boletos vencidos (Qtd)", f"{qtd_clientes:,}".replace(",", "."))
 
 st.divider()
 
@@ -326,9 +231,10 @@ if not resumo_sem_sucesso.empty:
 st.divider()
 
 # --------------------------------------------------------------------------
-# 5. Valor vencido por mês | 6. Vencido por mês por carteira
+# 5. Valor vencido por mês (+ % de inadimplência do mês) | 6. Mês x Carteira
 # --------------------------------------------------------------------------
-st.subheader("Valor vencido por mês (de vencimento)")
+st.subheader("Valor vencido por mês")
+
 g = (
     base[base["Mes_Vencimento"] != ""]
     .groupby("Mes_Vencimento", as_index=False)["Valor fatura"]
@@ -336,11 +242,47 @@ g = (
     .sort_values("Mes_Vencimento")
 )
 g["_rotulo_mes"] = g["Mes_Vencimento"].apply(mes_vencimento_label)
-fig = bar_com_rotulo_moeda(g, x="_rotulo_mes", y="Valor fatura")
-fig.update_layout(xaxis_title="Mês de vencimento", yaxis_title="Valor vencido (R$)")
+g["_label_valor"] = g["Valor fatura"].apply(fmt_moeda)
+
+# Percentual de inadimplência de cada mês, vindo da aba Indicadores (que só
+# guarda o nome do mês, sem ano — por isso o cruzamento é só pelo nome).
+mapa_percentual = {}
+if indicadores is not None and not indicadores.empty and {"Mês", "Percentual"} <= set(indicadores.columns):
+    mapa_percentual = {
+        str(m).strip().lower(): p
+        for m, p in zip(indicadores["Mês"], indicadores["Percentual"])
+    }
+g["_nome_mes"] = g["Mes_Vencimento"].apply(nome_mes_de_referencia)
+g["_percentual"] = g["_nome_mes"].str.lower().map(mapa_percentual)
+
+fig = go.Figure()
+fig.add_bar(
+    x=g["_rotulo_mes"], y=g["Valor fatura"], name="Valor vencido",
+    text=g["_label_valor"], textposition="outside", marker_color="#4C78A8",
+)
+fig.add_scatter(
+    x=g["_rotulo_mes"], y=g["_percentual"], name="% Inadimplência do mês",
+    mode="lines+markers", yaxis="y2", marker_color="#E45756",
+    text=g["_percentual"].apply(lambda p: f"{p:.2%}" if pd.notna(p) else "sem dado"),
+    hovertemplate="%{x}: %{text}<extra></extra>",
+)
+fig.update_layout(
+    xaxis_title="Mês de vencimento",
+    yaxis=dict(title="Valor vencido (R$)"),
+    yaxis2=dict(title="% Inadimplência", overlaying="y", side="right", tickformat=".2%"),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+)
+if g["_percentual"].isna().all():
+    st.caption(
+        "⚠️ Não encontrei o percentual de inadimplência de nenhum desses meses "
+        "na aba Indicadores — a linha de % fica sem dado."
+    )
 st.plotly_chart(fig, use_container_width=True)
 
-st.subheader("Vencido por mês, por carteira")
+st.subheader("Vencidos Mês x Carteira")
+st.caption(
+    "Clique numa carteira na legenda pra ver só ela; clique de novo pra voltar a ver todas."
+)
 g = (
     base[base["Mes_Vencimento"] != ""]
     .groupby(["Mes_Vencimento", "Carteira"], as_index=False)["Valor fatura"]
@@ -349,7 +291,11 @@ g = (
 )
 g["_rotulo_mes"] = g["Mes_Vencimento"].apply(mes_vencimento_label)
 fig = px.bar(g, x="_rotulo_mes", y="Valor fatura", color="Carteira", barmode="group")
-fig.update_layout(xaxis_title="Mês de vencimento", yaxis_title="Valor vencido (R$)")
+fig.update_layout(
+    xaxis_title="Mês de vencimento",
+    yaxis_title="Valor vencido (R$)",
+    legend=dict(itemclick="toggleothers", itemdoubleclick="toggle"),
+)
 st.plotly_chart(fig, use_container_width=True)
 
 st.divider()

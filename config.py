@@ -50,12 +50,12 @@ META_PERCENTUAL_INADIMPLENCIA = 0.006
 # Intervalo de atualização automática do dashboard (em milissegundos).
 # Cuidado ao diminuir muito: cada refresh de cada pessoa com o app aberto
 # gasta cota da API do Google Sheets (o cache abaixo já reduz bastante isso).
-REFRESH_INTERVAL_MS = 2 * 60 * 1000  # 2 minutos
+REFRESH_INTERVAL_MS = 5 * 60 * 1000  # 5 minutos
 
 # Tempo de cache dos dados (em segundos) — deve ser um pouco menor que o
 # intervalo de refresh para garantir dado fresco a cada rerun, mas alto o
 # bastante pra não estourar a cota de leitura da API do Google Sheets.
-CACHE_TTL_SECONDS = 110
+CACHE_TTL_SECONDS = 290
 
 # Valor considerado "contato sem sucesso" (ajuste conforme o texto real
 # usado na coluna "Contato" da Base_cobrança). A checagem é case-insensitive

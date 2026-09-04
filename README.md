@@ -1,27 +1,35 @@
 # Dashboard — Carteira de Cobrança
 
 Dashboard interativo em Streamlit para acompanhar a carteira de cobrança,
-com filtros por mês e por carteira, e uma consulta de inadimplência por
-cliente no topo da página.
+com filtros por mês e por carteira. A consulta de inadimplência por
+cliente fica numa página separada, acessível pela barra lateral.
 
 Os dados vêm de uma planilha do Google Sheets, lida via API com uma
 conta de serviço (não depende de sincronização de arquivo local, então o
 app pode ser publicado com link público no Streamlit Community Cloud).
+Os dados são atualizados automaticamente a cada 5 minutos.
 
 ## Estrutura do projeto
 
 ```
-app.py              → página principal do dashboard (filtros, KPIs, gráficos, consulta)
-auth.py              → tela de senha (protege o app quando publicado como "público")
-config.py           → configurações (ID da planilha, nomes das abas, regras de negócio)
-data_loader.py       → leitura da planilha (Google Sheets API) e tratamento dos dados
-busca.py             → lógica de busca de cliente (consulta de inadimplência)
-utils.py             → funções de formatação e normalização compartilhadas
-tests/               → testes automatizados do tratamento de dados
-requirements.txt      → dependências de produção
-requirements-dev.txt  → dependências de produção + pytest
+app.py                       → página principal do dashboard (filtros, KPIs, gráficos)
+pages/
+  1_🔎_Consulta_de_Inadimplencia.py → página separada de consulta por cliente
+auth.py                      → tela de senha (protege o app quando publicado como "público")
+config.py                    → configurações (ID da planilha, nomes das abas, regras de negócio)
+data_loader.py                → leitura da planilha (Google Sheets API) e tratamento dos dados
+busca.py                      → lógica de busca de cliente (consulta de inadimplência)
+utils.py                      → funções de formatação e normalização compartilhadas
+ui_common.py                  → itens de interface compartilhados entre as páginas (botão de recarregar dados)
+tests/                        → testes automatizados do tratamento de dados
+requirements.txt               → dependências de produção
+requirements-dev.txt           → dependências de produção + pytest
 .streamlit/secrets.toml.example → modelo do arquivo de credenciais (não é o arquivo real)
 ```
+
+> Importante: ao subir os arquivos no GitHub, não esqueça de enviar a
+> pasta `pages/` inteira e o arquivo `ui_common.py` — sem eles, a página
+> de Consulta de Inadimplência não aparece na barra lateral do app.
 
 ## 1. Antes de tudo: crie a conta de serviço no Google Cloud
 
@@ -83,11 +91,16 @@ A Community Cloud só permite **1 app privado por conta** (restrito por e-mail/G
 
 ## 6. Uso no dia a dia
 
-- **Consulta de Inadimplência** (topo da página): busque por telefone, e-mail, razão social, CNPJ ou CNPJ editado. Essa busca sempre olha a base completa, sem levar em conta os filtros abaixo.
-- **Filtros** (Mês de vencimento / Carteira): filtram os KPIs e todos os gráficos abaixo deles. Deixar em branco = considera tudo.
+- **Consulta de Inadimplência**: página própria, acessada pelo link "🔎 Consulta de Inadimplencia" na barra lateral. Busque por telefone, e-mail, razão social, CNPJ, CNPJ editado ou CPF. Essa busca sempre olha a base completa, sem levar em conta os filtros do dashboard.
+  - Se o dado buscado (por exemplo, a mesma razão social) corresponder a mais de um cliente, o app mostra um aviso e uma lista para você escolher qual cliente quer ver antes de exibir os dados.
+  - O campo de documento identifica automaticamente se é **CPF** (11 dígitos) ou **CNPJ** (demais casos) e mostra o rótulo correto.
+- **Filtros** (Mês de vencimento / Carteira), na página principal: filtram os KPIs e todos os gráficos abaixo deles. Deixar em branco = considera tudo.
   - Ao filtrar por uma ou mais Carteiras que também sejam nomes de analista na aba `Historico_valores` (Adriana, Didiane, Rafaela, Vitória), o gráfico "Evolução diária" passa a mostrar a evolução só daquela(s) pessoa(s), em vez do valor geral da empresa.
+  - No gráfico **"Vencidos Mês x Carteira"**, clicar numa carteira na legenda isola só ela no gráfico; clicar de novo volta a mostrar todas.
+- O gráfico **"Valor vencido por mês"** mostra as barras de valor vencido e, sobreposta, uma linha com o percentual de inadimplência de cada mês (mesmo percentual da aba Indicadores).
 - A seção **Indicadores** (Receita/Inadimplência/Meta) reflete a planilha inteira e não é afetada pelos filtros — ela é o espelho da tabela dinâmica da empresa como um todo.
-- Botão **Recarregar dados agora** (barra lateral): força buscar a planilha de novo, ignorando o cache.
+- Botão **Recarregar dados agora** (barra lateral, disponível nas duas páginas): força buscar a planilha de novo, ignorando o cache.
+- Os dados são atualizados automaticamente a cada 5 minutos (também ajustável em `config.py`, veja a seção 8).
 
 ## 7. Testes
 
@@ -106,3 +119,4 @@ Em `config.py` você pode alterar, sem mexer no resto do código:
 - `REFRESH_INTERVAL_MS` e `CACHE_TTL_SECONDS` (frequência de atualização automática — cuidado ao diminuir muito, pois cada leitura consome cota da API do Google Sheets).
 - `TERMOS_CONTATO_SEM_SUCESSO` (textos que marcam um contato como "sem sucesso").
 - `COLUNAS_ANALISTAS_HISTORICO` (nomes das colunas de analista na aba `Historico_valores`, usados no filtro por pessoa).
+- `RANGE_INDICADORES` (hoje `"J10:N22"`) — a tabela de Indicadores é uma tabela dinâmica que não começa em A1. Se um dia ela for movida de lugar na planilha, atualize esse intervalo aqui (não precisa mexer em mais nada).

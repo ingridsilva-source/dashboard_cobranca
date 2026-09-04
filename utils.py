@@ -122,3 +122,23 @@ def mes_vencimento_label(valor: str) -> str:
         return f"{MESES_PT[int(mes)]}/{ano}"
     except (ValueError, KeyError):
         return str(valor)
+
+
+def nome_mes_de_referencia(mes_vencimento: str) -> str:
+    """Extrai só o nome do mês em português de um 'Mes_Vencimento'
+    ('AAAA-MM' -> 'Agosto'), pra cruzar com a coluna 'Mês' da aba
+    Indicadores (que guarda só o nome do mês, sem ano)."""
+    if not mes_vencimento or "-" not in str(mes_vencimento):
+        return ""
+    try:
+        _, mes = str(mes_vencimento).split("-")
+        return MESES_PT[int(mes)]
+    except (ValueError, KeyError):
+        return ""
+
+
+def rotulo_documento(valor) -> str:
+    """CPF tem 11 dígitos; CNPJ tem mais (normalmente 14). Usado pra
+    rotular corretamente o campo na consulta de inadimplência conforme
+    o tipo de documento do cliente."""
+    return "CPF" if len(only_digits(valor)) == 11 else "CNPJ"
