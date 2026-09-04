@@ -460,30 +460,37 @@ if indicadores is not None and not indicadores.empty:
     from utils import MESES_PT
     mes_anterior_num = (pd.Timestamp.now() - pd.DateOffset(months=1)).month
     mes_atual_nome = MESES_PT[mes_anterior_num]
-    linha_atual = indicadores[
-        indicadores["Mês"].str.lower() == mes_atual_nome.lower()
-    ]
 
-    if not linha_atual.empty:
-        atual_row = linha_atual.iloc[0]
-        falta = atual_row.get("Falta p/ meta (R$)", None)
-        mes_label = atual_row.get("Mês", mes_atual_nome)
-        if falta is not None:
-            if falta > 0:
-                st.warning(
-                    f"Faltam **{fmt_moeda(falta)}** para atingir a meta de 0,60% "
-                    f"de inadimplência em **{mes_label}** (mês anterior)."
-                )
-            else:
-                st.success(
-                    f"Meta batida em **{mes_label}** (mês anterior)! Inadimplência "
-                    f"**{fmt_moeda(-falta)}** abaixo da meta."
-                )
-    else:
+    if "Mês" not in indicadores.columns:
         st.caption(
-            f"⚠️ Não encontrei uma linha na tabela de Indicadores para o mês "
-            f"anterior ({mes_atual_nome})."
+            "⚠️ Não encontrei uma coluna 'Mês' na aba Indicadores — não dá "
+            "pra identificar automaticamente a linha do mês anterior."
         )
+    else:
+        linha_atual = indicadores[
+            indicadores["Mês"].str.lower() == mes_atual_nome.lower()
+        ]
+
+        if not linha_atual.empty:
+            atual_row = linha_atual.iloc[0]
+            falta = atual_row.get("Falta p/ meta (R$)", None)
+            mes_label = atual_row.get("Mês", mes_atual_nome)
+            if falta is not None:
+                if falta > 0:
+                    st.warning(
+                        f"Faltam **{fmt_moeda(falta)}** para atingir a meta de 0,60% "
+                        f"de inadimplência em **{mes_label}** (mês anterior)."
+                    )
+                else:
+                    st.success(
+                        f"Meta batida em **{mes_label}** (mês anterior)! Inadimplência "
+                        f"**{fmt_moeda(-falta)}** abaixo da meta."
+                    )
+        else:
+            st.caption(
+                f"⚠️ Não encontrei uma linha na tabela de Indicadores para o mês "
+                f"anterior ({mes_atual_nome})."
+            )
 else:
     st.warning("A aba Indicadores está vazia ou não foi encontrada.")
 
