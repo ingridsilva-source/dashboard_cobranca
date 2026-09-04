@@ -298,12 +298,10 @@ g = (
     .sort_values("Mes_Vencimento")
 )
 g["_rotulo_mes"] = g["Mes_Vencimento"].apply(mes_vencimento_label)
-g["_label_valor"] = g["Valor fatura"].apply(fmt_moeda)
 fig = px.bar(
     g, x="_rotulo_mes", y="Valor fatura", color="Carteira", barmode="group",
-    text="_label_valor",
 )
-fig.update_traces(textposition="outside", hoverinfo="skip", hovertemplate=None, cliponaxis=False)
+fig.update_traces(hoverinfo="skip", hovertemplate=None)
 fig.update_layout(
     xaxis_title="Mês de vencimento",
     yaxis_title="Valor vencido (R$)",
@@ -452,8 +450,3 @@ if indicadores is not None and not indicadores.empty:
             )
 else:
     st.warning("A aba Indicadores está vazia ou não foi encontrada.")
-
-st.caption(
-    "Meta calculada como 0,60% da Receita do mês (config.META_PERCENTUAL_INADIMPLENCIA). "
-    "'Falta p/ meta' = Inadimplência atual − Meta."
-)
