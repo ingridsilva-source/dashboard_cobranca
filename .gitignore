@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Credenciais — NUNCA versionar
+service_account.json
+.streamlit/secrets.toml
