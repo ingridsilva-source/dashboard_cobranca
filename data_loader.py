@@ -100,14 +100,48 @@ def _encontrar_aba(planilha, nome_desejado):
     return None
 
 
+def _deduplicar_colunas(nomes):
+    """Garante nomes de coluna únicos, mesmo que a planilha tenha
+    cabeçalhos repetidos (ex.: duas colunas 'Multa') ou em branco. A
+    primeira ocorrência mantém o nome original; as repetições ganham um
+    sufixo (_2, _3, ...). Sem isso, gspread recusa a leitura da aba."""
+    contagem = {}
+    resultado = []
+    for nome in nomes:
+        nome = str(nome).strip() if str(nome).strip() else "Coluna_sem_nome"
+        contagem[nome] = contagem.get(nome, 0) + 1
+        if contagem[nome] == 1:
+            resultado.append(nome)
+        else:
+            resultado.append(f"{nome}_{contagem[nome]}")
+    return resultado
+
+
 def _ler_aba(planilha, nome_desejado) -> pd.DataFrame:
+    """Lê uma aba pegando os valores brutos (get_all_values), em vez de
+    get_all_records: este último quebra quando a planilha tem cabeçalhos
+    duplicados ou em branco, o que é comum em planilhas mantidas por
+    várias pessoas ao longo do tempo."""
     ws = _encontrar_aba(planilha, nome_desejado)
     if ws is None:
         return pd.DataFrame()
-    registros = ws.get_all_records()
-    df = pd.DataFrame(registros)
-    df.columns = [str(c).strip() for c in df.columns]
-    return df
+
+    valores = ws.get_all_values()
+    if not valores:
+        return pd.DataFrame()
+
+    cabecalho = _deduplicar_colunas(valores[0])
+    n_colunas = len(cabecalho)
+
+    linhas = []
+    for linha in valores[1:]:
+        if len(linha) < n_colunas:
+            linha = linha + [""] * (n_colunas - len(linha))
+        elif len(linha) > n_colunas:
+            linha = linha[:n_colunas]
+        linhas.append(linha)
+
+    return pd.DataFrame(linhas, columns=cabecalho)
 
 
 # --------------------------------------------------------------------------
