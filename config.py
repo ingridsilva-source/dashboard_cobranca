@@ -35,6 +35,12 @@ ABA_INDICADORES = "Indicadores"
 ABA_HISTORICO_VALORES = "Historico_valores"
 ABA_RELACAO_CLIENTES = "Relação_de_clientes"
 
+# A tabela de Indicadores é uma tabela dinâmica que fica num intervalo
+# específico da aba (não começa em A1) — hoje em J10:N22 (J10 é o
+# cabeçalho "Mês"; J11:N22 são os 12 meses do ano). Se um dia a tabela
+# dinâmica for movida na planilha, ajuste esse intervalo aqui.
+RANGE_INDICADORES = "J10:N22"
+
 # --------------------------------------------------------------------------
 # REGRAS DE NEGÓCIO
 # --------------------------------------------------------------------------
