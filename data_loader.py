@@ -264,7 +264,12 @@ def _processar(base, email, indicadores, clientes, historico):
         )
 
         # Remove linhas em branco que vêm do intervalo lido na planilha.
-        base = base[base["CNPJ_limpo"] != ""].reset_index(drop=True)
+        # Importante: usa "_cliente_key" (CNPJ_edit OU CNPJ), não só
+        # "CNPJ_limpo" — senão um cliente cujo documento só está
+        # preenchido em CNPJ_edit (comum quando a mesma razão social tem
+        # um registro de CNPJ e outro de CPF) era descartado aqui antes
+        # mesmo de chegar na busca.
+        base = base[base["_cliente_key"] != ""].reset_index(drop=True)
 
     # ---------- Base_email ----------
     if not email.empty:
