@@ -16,7 +16,7 @@ import streamlit as st
 from google.oauth2.service_account import Credentials
 
 import config
-from utils import only_digits, parse_money, parse_date
+from utils import only_digits, parse_money, parse_date, safe_col
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
@@ -30,10 +30,49 @@ _STOPWORDS_CONTATO = {
 
 
 def _normalizar_simples(texto) -> str:
+    """Normaliza texto pra comparação tolerante: sem acento (inclusive
+    diferenças de codificação Unicode do mesmo acento), maiúsculas/
+    minúsculas e espaços extras não importam."""
     if not texto:
         return ""
     nfkd = unicodedata.normalize("NFKD", str(texto))
-    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower().strip()
+    sem_acento = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", sem_acento).strip().lower()
+
+
+# Nomes "canônicos" de coluna que o resto do código espera, por aba. Ao
+# carregar os dados, qualquer coluna da planilha cujo nome bata com um
+# destes (ignorando acento/maiúscula/espaços) é renomeada pro nome
+# canônico — assim uma pequena diferença de digitação na planilha (ex.:
+# "mês" em vez de "Mês", ou um espaço a mais) não quebra o dashboard.
+COLUNAS_CANONICAS_BASE = [
+    "Carteira", "Empresa", "CNPJ", "CNPJ_edit", "Telefone", "Vencimento",
+    "Atraso (dias)", "Valor fatura", "Valor atualizado",
+    "Situação do contrato", "Senha boleto", "Contato", "Dia",
+]
+COLUNAS_CANONICAS_INDICADORES = ["Mês", "Receita", "Inadimplência", "A realizar", "Percentual"]
+COLUNAS_CANONICAS_CLIENTES = ["cnpj_cpf", "uf"]
+COLUNAS_CANONICAS_EMAIL = ["email", "cnpj_cpf"]
+
+
+def _colunas_canonicas_historico():
+    return ["Data", "Geral (Base_cobrança)"] + list(config.COLUNAS_ANALISTAS_HISTORICO)
+
+
+def _renomear_para_canonico(df: pd.DataFrame, colunas_esperadas) -> pd.DataFrame:
+    """Encontra colunas do DataFrame cujo nome bate (de forma tolerante)
+    com um dos nomes esperados e as renomeia pro nome canônico. Não
+    falha se alguma coluna esperada não existir — isso é tratado depois,
+    onde cada coluna é usada."""
+    if df.empty:
+        return df
+    normalizados = {_normalizar_simples(c): c for c in df.columns}
+    renomear = {}
+    for alvo in colunas_esperadas:
+        atual = normalizados.get(_normalizar_simples(alvo))
+        if atual and atual != alvo:
+            renomear[atual] = alvo
+    return df.rename(columns=renomear) if renomear else df
 
 
 def _normalizar_contato(texto: str) -> str:
@@ -154,11 +193,25 @@ def _processar(base, email, indicadores, clientes, historico):
     clientes = clientes.copy()
     historico = historico.copy()
 
+    # Tolera pequenas diferenças de acento/maiúsculas/espaços nos
+    # cabeçalhos reais da planilha em relação ao nome que o código espera.
+    base = _renomear_para_canonico(base, COLUNAS_CANONICAS_BASE)
+    email = _renomear_para_canonico(email, COLUNAS_CANONICAS_EMAIL)
+    indicadores = _renomear_para_canonico(indicadores, COLUNAS_CANONICAS_INDICADORES)
+    clientes = _renomear_para_canonico(clientes, COLUNAS_CANONICAS_CLIENTES)
+    historico = _renomear_para_canonico(historico, _colunas_canonicas_historico())
+
     # ---------- Base_cobrança ----------
     if not base.empty:
         base["Valor fatura"] = base.get("Valor fatura", pd.Series(dtype=object)).apply(parse_money)
         base["Valor atualizado"] = base.get("Valor atualizado", pd.Series(dtype=object)).apply(parse_money)
-        base["Atraso (dias)"] = pd.to_numeric(base.get("Atraso (dias)", 0), errors="coerce").fillna(0)
+        # Série (não escalar) como padrão: um valor solto não tem .fillna()
+        # e, se a coluna não existir, o default precisa ter o mesmo índice
+        # da base pra virar 0 em toda linha, e não NaN por desalinhamento.
+        _atraso_default = pd.Series([0] * len(base), index=base.index)
+        base["Atraso (dias)"] = pd.to_numeric(
+            base.get("Atraso (dias)", _atraso_default), errors="coerce"
+        ).fillna(0)
 
         base["Vencimento_dt"] = pd.to_datetime(
             base.get("Vencimento", pd.Series(dtype=object)).apply(parse_date), errors="coerce"
@@ -176,10 +229,13 @@ def _processar(base, email, indicadores, clientes, historico):
         base["Telefone_limpo"] = base.get("Telefone", pd.Series(dtype=object)).apply(only_digits)
         base["Empresa_norm"] = base.get("Empresa", pd.Series(dtype=object)).fillna("").apply(_normalizar_simples)
 
-        base["Contato"] = base.get("Contato", "").fillna("").astype(str).str.strip()
+        # safe_col nunca quebra mesmo se a coluna não existir na planilha
+        # (diferente de base.get(col, "").fillna(...), que falha nesse caso
+        # porque o valor padrão "" é uma string comum, sem método .fillna).
+        base["Contato"] = safe_col(base, "Contato").astype(str).str.strip()
         base["Contato"] = base["Contato"].replace("", "Não informado")
-        base["Carteira"] = base.get("Carteira", "").fillna("Não informado")
-        base["Situação do contrato"] = base.get("Situação do contrato", "").fillna("Não informado")
+        base["Carteira"] = safe_col(base, "Carteira").replace("", "Não informado")
+        base["Situação do contrato"] = safe_col(base, "Situação do contrato").replace("", "Não informado")
 
         termos = [t.lower() for t in config.TERMOS_CONTATO_SEM_SUCESSO]
         base["Sem_sucesso"] = base["Contato"].str.lower().apply(
@@ -214,7 +270,7 @@ def _processar(base, email, indicadores, clientes, historico):
     # ---------- Relação_de_clientes ----------
     if not clientes.empty:
         clientes["CNPJ_limpo"] = clientes.get("cnpj_cpf", pd.Series(dtype=object)).apply(only_digits)
-        clientes["uf"] = clientes.get("uf", "Não informado").fillna("Não informado")
+        clientes["uf"] = safe_col(clientes, "uf").replace("", "Não informado")
 
     # ---------- Cruzamento com UF ----------
     if not base.empty and not clientes.empty:
