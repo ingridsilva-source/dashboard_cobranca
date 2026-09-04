@@ -41,11 +41,12 @@ if HAS_AUTOREFRESH:
 
 
 def bar_com_rotulo_moeda(df, x, y, **kwargs):
-    """Cria um gráfico de barras com rótulo em R$ por extenso (sem abreviar em k/M)."""
+    """Cria um gráfico de barras com rótulo em R$ por extenso (sem abreviar em
+    k/M) e sem balão de hover — o valor já aparece direto na barra."""
     df = df.copy()
     df["_label"] = df[y].apply(fmt_moeda)
     fig = px.bar(df, x=x, y=y, text="_label", **kwargs)
-    fig.update_traces(textposition="outside")
+    fig.update_traces(textposition="outside", hoverinfo="skip", hovertemplate=None)
     return fig
 
 
@@ -255,22 +256,29 @@ if indicadores is not None and not indicadores.empty and {"Mês", "Percentual"} 
 g["_nome_mes"] = g["Mes_Vencimento"].apply(nome_mes_de_referencia)
 g["_percentual"] = g["_nome_mes"].str.lower().map(mapa_percentual)
 
+g["_label_percentual"] = g["_percentual"].apply(lambda p: f"<b>{p:.2%}</b>" if pd.notna(p) else "")
+
 fig = go.Figure()
 fig.add_bar(
     x=g["_rotulo_mes"], y=g["Valor fatura"], name="Valor vencido",
     text=g["_label_valor"], textposition="outside", marker_color="#4C78A8",
+    hoverinfo="skip",
 )
 fig.add_scatter(
     x=g["_rotulo_mes"], y=g["_percentual"], name="% Inadimplência do mês",
-    mode="lines+markers", yaxis="y2", marker_color="#E45756",
-    text=g["_percentual"].apply(lambda p: f"{p:.2%}" if pd.notna(p) else "sem dado"),
-    hovertemplate="%{x}: %{text}<extra></extra>",
+    mode="lines+markers+text", yaxis="y2", marker_color="#E45756",
+    text=g["_label_percentual"], textposition="top center",
+    textfont=dict(color="#E45756", size=13),
+    hoverinfo="skip",
 )
 fig.update_layout(
     xaxis_title="Mês de vencimento",
     yaxis=dict(title="Valor vencido (R$)"),
     yaxis2=dict(title="% Inadimplência", overlaying="y", side="right", tickformat=".2%"),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+    legend=dict(
+        orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
+        itemclick="toggleothers", itemdoubleclick="toggle",
+    ),
 )
 if g["_percentual"].isna().all():
     st.caption(
@@ -290,7 +298,12 @@ g = (
     .sort_values("Mes_Vencimento")
 )
 g["_rotulo_mes"] = g["Mes_Vencimento"].apply(mes_vencimento_label)
-fig = px.bar(g, x="_rotulo_mes", y="Valor fatura", color="Carteira", barmode="group")
+g["_label_valor"] = g["Valor fatura"].apply(fmt_moeda)
+fig = px.bar(
+    g, x="_rotulo_mes", y="Valor fatura", color="Carteira", barmode="group",
+    text="_label_valor",
+)
+fig.update_traces(textposition="outside", hoverinfo="skip", hovertemplate=None, cliponaxis=False)
 fig.update_layout(
     xaxis_title="Mês de vencimento",
     yaxis_title="Valor vencido (R$)",

@@ -14,7 +14,7 @@ Os dados são atualizados automaticamente a cada 5 minutos.
 ```
 app.py                       → página principal do dashboard (filtros, KPIs, gráficos)
 pages/
-  1_🔎_Consulta_de_Inadimplencia.py → página separada de consulta por cliente
+  1_Consulta_de_Inadimplencia.py → página separada de consulta por cliente
 auth.py                      → tela de senha (protege o app quando publicado como "público")
 config.py                    → configurações (ID da planilha, nomes das abas, regras de negócio)
 data_loader.py                → leitura da planilha (Google Sheets API) e tratamento dos dados
@@ -30,6 +30,15 @@ requirements-dev.txt           → dependências de produção + pytest
 > Importante: ao subir os arquivos no GitHub, não esqueça de enviar a
 > pasta `pages/` inteira e o arquivo `ui_common.py` — sem eles, a página
 > de Consulta de Inadimplência não aparece na barra lateral do app.
+>
+> **Se a página "Consulta de Inadimplencia" não aparecer na barra
+> lateral** depois do deploy: entre no seu repositório pelo navegador e
+> confira se existe, ao lado do `app.py`, uma pasta chamada `pages` com o
+> arquivo `1_Consulta_de_Inadimplencia.py` dentro dela. Se a pasta não
+> aparecer (ou aparecer vazia), o upload da pasta não foi concluído — vá
+> em **"Add file" → "Upload files"** de novo e arraste só a pasta `pages`
+> dessa vez. Depois de confirmar que ela está lá, entre no painel do app
+> no Streamlit Cloud e clique em **"Reboot app"**.
 
 ## 1. Antes de tudo: crie a conta de serviço no Google Cloud
 
